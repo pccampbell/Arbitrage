@@ -8,11 +8,132 @@ from ebaysdk.finding import Connection
 import os
 from datetime import datetime, timedelta
 import sys
+import psycopg2
+import pandas as pd
+from io import StringIO
+
 
 load_dotenv()
 API_KEY = os.getenv('api_key')
 NOW = datetime.now()
 NOW_GMT = datetime.now() + timedelta(hours=6)
+
+PG_USER = 'postgres'
+PG_PASS = os.getenv('pg_pass')
+PG_HOST = '10.0.0.26'
+
+
+def parse_page(page, item_list):
+    # Create a dict for each item in the page and add it to the list of dicts reutn the list
+    try:
+        for item in page.reply.searchResult.item:
+            try:
+                title = item.title
+            except:
+                title = ''
+                pass
+            try:
+                price = item.sellingStatus.currentPrice.value
+            except:
+                price = ''
+                pass
+            try:
+                shipping = item.shippingInfo.shippingServiceCost.value
+            except:
+                shipping = ''
+                pass
+            try:
+                url = item.viewItemURL
+            except:
+                url = ''
+                pass
+            try:
+                buyitnow = item.listingInfo.buyItNowAvailable
+            except:
+                buyitnow = ''
+                pass
+            try:
+                endtime = item.listingInfo.endTime
+            except:
+                endtime = ''
+                pass
+            try:
+                condition = item.condition.conditionDisplayName
+            except:
+                condition = ''
+                pass
+
+            item_dict = {'Title': title, 'Price': price, 'isbn': '', 'Shipping': shipping, 'URL': url,
+                         'Condition': condition, 'BuyItNow': buyitnow, 'EndTime': endtime}
+
+            # print(item_dict)
+            item_list.append(item_dict)
+            #print('item list #: ' + str(len(list)))
+
+        # print('item list #: ' + str(len(item_list)))
+
+        # print('whats wrong')
+    except:
+        print(str(page.reply))
+
+    return item_list
+
+
+def call_api(connection, search_term, page, start, end):
+    response = connection.execute('findItemsAdvanced', {'keywords': search_term,
+                                                 'paginationInput': {
+                                                     'entriesPerPage': 100,
+                                                     'pageNumber': page,
+                                                 },
+                                                 'itemFilter': [
+                                                     {'name': 'Condition',
+                                                      'value': ['New'],
+                                                      },
+                                                     {'name': 'LocatedIn',
+                                                      'value': ['US'],
+                                                      },
+                                                     {'name': 'Currency',
+                                                      'value': ['USD'],
+                                                      },
+                                                     {'name': 'EndTimeFrom',  # on or after
+                                                      'value': start,
+                                                      },
+                                                     {'name': 'EndTimeTo',  # on or before
+                                                      'value': end,
+                                                      },
+                                                     {'name': 'ListingType',
+                                                      'value': 'FixedPrice',
+                                                      }
+                                                 ], })
+    return response
+
+
+def connect_db(host, dbname, user, password):
+    connection = psycopg2.connect(host=host, dbname=dbname, user=user, password=password, port=5432)
+    return connection
+
+
+def bulk_load_items(db_conn, item_list):
+    # create a cursor
+    cur = db_conn.cursor()
+    print(item_list)
+
+    # create df from list of dicts
+    item_df = pd.DataFrame.from_dict(item_list)
+    # execute a statement
+    try:
+        # Initialize a string buffer
+        sio = StringIO()
+        sio.write(
+            item_df.to_csv(index=None, header=None, sep='\t'))  # Write the Pandas DataFrame as a csv to the buffer
+        sio.seek(0)
+
+        with conn.cursor() as c:
+            c.copy_from(sio, "ebay", columns=item_df.columns, sep='\t', null="")
+            conn.commit()
+
+    except psycopg2.Error as e:
+        print(str(e))
 
 
 class Ebay(object):
@@ -21,93 +142,65 @@ class Ebay(object):
         self.search = search
 
     def fetch(self):
-        rawdate = NOW_GMT + timedelta(hours=6)
+        rawdate = NOW_GMT + timedelta(days=30) + timedelta(hours=19)
         # rawdate = datetime(2021,12,14,8)
         # consdate = datetime(2021, 12, 14, 8)
+        item_list = []
         try:
             api = Connection(appid=self.api_key, config_file=None, siteid="EBAY-US")
+
             for i in range(1, 100):
+                print("starting run: " + str(i))
                 to_datetime = (rawdate + timedelta(days=0)).isoformat() + 'Z'
                 from_datetime = (rawdate - timedelta(minutes=30)).isoformat() + 'Z'
-                print(i)
                 print(from_datetime + '\n' + to_datetime)
-                response = api.execute('findItemsAdvanced', {'keywords': search,
-                                                             'paginationInput': {
-                                                                 'entriesPerPage': 100,
-                                                                 'pageNumber': i,
-                                                             },
-                                                             'itemFilter': [
-                                                                 {'name': 'Condition',
-                                                                  'value': ['New'],
-                                                                  },
-                                                                 {'name': 'EndTimeTo',  # on or before
-                                                                  'value': to_datetime,
-                                                                  },
-                                                                 {'name': 'EndTimeFrom',  # on or after
-                                                                  'value': from_datetime,
-                                                                  },
-                                                                 {'name': 'ListingType',
-                                                                  'value': 'FixedPrice',
-                                                                  }
-                                                             ], })
-
                 try:
-                    print(f"Total items {response.reply.paginationOutput.totalEntries}\n")
-                    # print(f"Page: {response.reply.paginationOutput.pageNumber}")
-                    # print(f"Page: {response.reply.itemSearchURL}\n")
-                except:
+                    # print("calling page 1")
+                    response = call_api(api, self.search, 1, from_datetime, to_datetime)
+
+                    print(f"Total api result {response.reply.paginationOutput.totalEntries}")
+                    page = int(response.reply.paginationOutput.pageNumber)
+                    pages = int(response.reply.paginationOutput.totalPages)
+                    # print(f"Total Pages {pages}")
+
+                    # parse page 1
+                    item_list = parse_page(response, item_list)
+                    # print('item list length: ' + str(len(item_list)))
+
+                    if pages >= 2:
+                        # print('multipage')
+                        for page in range(2, pages+1):
+                            # call new page
+                            # print(f"calling page: {page}")
+                            new_page = call_api(api, self.search, str(page), from_datetime, to_datetime)
+                            # print('succ pulled page: ' + str(new_page.reply.paginationOutput.pageNumber))
+                            item_list = parse_page(new_page, item_list)
+
+                except Exception as e:
+                    print(str(e))
+                    print('No data \n')
                     pass
-                # print(f"Response: {response.reply}")
-                # print(f"Items: {len(response.reply.searchResult.item)}")
-
-                for idx, item in enumerate(response.reply.searchResult.item):
-                    print(idx)
-                    print(f"Title: {item.title}, Price: {item.sellingStatus.currentPrice.value}")
-                    try:
-                        pid_type = item.productId._type
-                        pid = item.productId.value
-                        print(f"ID Type : {pid_type}")
-                        print(f"ID : {pid}")
-                    except:
-                        print(f"Response: {item}\n")
-                        pass
-                    try:
-                        if pid_type == 'ReferenceID':
-                            response = api.execute('getProductDetails', {'productIdentifier': {
-                                                                     'ePID': pid,
-                                                                        }
-                                                                    }
-                                                   )
-                            print(response.reply.product.productIdentifier.ISBN)
-                        else:
-                            pass
-                    except:
-                        pass
-                    #time.sleep(1)
-                #    print(f"Buy it now available : {item.listingInfo.buyItNowAvailable}")
-                #     print(f"Buy it now available : {item.listingInfo.buyItNowPrice}")
-                #     print(f"Buy it now available : {item.listingInfo.listingType}")
-                #     print(f"Buy it now available : {item.shippingInfo.shippingServiceCost}")
-                #     print(f"Country : {item.country}")
-                #     print(f"End time :{item.listingInfo.endTime}")
-                #     print(f"URL : {item.viewItemURL}")
                 i += 1
+
                 rawdate = rawdate + timedelta(minutes=30)
+                print('Current List count ' + str(len(item_list)) + '\n\n')
+            print('Master List Total: ' + str(len(item_list)))
 
-        except ConnectionError as e:
-            print(e)
-            print(e.response.dict())
-
-    def parse(self):
-        pass
+        except Exception as e:
+            print(str(e))
+            pass
+        return item_list
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     start_time = datetime.now()
+
     search = sys.argv[1]
     e = Ebay(API_KEY, search)
-    e.fetch()
-    e.parse()
+    item_list = e.fetch()
+    conn = connect_db(PG_HOST, 'arbitrage', PG_USER, PG_PASS)
+    bulk_load_items(conn, item_list)
+
     end_time = datetime.now()
     print(end_time - start_time)
