@@ -116,7 +116,7 @@ def connect_db(host, dbname, user, password):
 def bulk_load_items(db_conn, item_list):
     # create a cursor
     cur = db_conn.cursor()
-    print(item_list)
+    # print(item_list)
 
     # create df from list of dicts
     item_df = pd.DataFrame.from_dict(item_list)
@@ -142,14 +142,14 @@ class Ebay(object):
         self.search = search
 
     def fetch(self):
-        rawdate = NOW_GMT + timedelta(days=30) + timedelta(hours=19)
+        rawdate = NOW_GMT + timedelta(days=30) + timedelta(hours=23)
         # rawdate = datetime(2021,12,14,8)
         # consdate = datetime(2021, 12, 14, 8)
         item_list = []
         try:
             api = Connection(appid=self.api_key, config_file=None, siteid="EBAY-US")
 
-            for i in range(1, 100):
+            for i in range(1, 10):
                 print("starting run: " + str(i))
                 to_datetime = (rawdate + timedelta(days=0)).isoformat() + 'Z'
                 from_datetime = (rawdate - timedelta(minutes=30)).isoformat() + 'Z'
