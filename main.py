@@ -47,11 +47,11 @@ def parse_page(page, item_list):
             except:
                 url = ''
                 pass
-            try:
-                buyitnow = item.listingInfo.buyItNowAvailable
-            except:
-                buyitnow = ''
-                pass
+            # try:
+            #     buyitnow = item.listingInfo.buyItNowAvailable
+            # except:
+            #     buyitnow = ''
+            #     pass
             try:
                 endtime = item.listingInfo.endTime
             except:
@@ -63,8 +63,8 @@ def parse_page(page, item_list):
                 condition = ''
                 pass
 
-            item_dict = {'Title': title, 'Price': price, 'isbn': '', 'Shipping': shipping, 'URL': url,
-                         'Condition': condition, 'BuyItNow': buyitnow, 'EndTime': endtime}
+            item_dict = {'title': title, 'price': price, 'isbn': '', 'shipping': shipping, 'url': url,
+                         'condition': condition, 'endtime': endtime}
 
             # print(item_dict)
             item_list.append(item_dict)
@@ -125,7 +125,7 @@ def bulk_load_items(db_conn, item_list):
         # Initialize a string buffer
         sio = StringIO()
         sio.write(
-            item_df.to_csv(index=None, header=None, sep='\t'))  # Write the Pandas DataFrame as a csv to the buffer
+            item_df.to_csv(index=False, header=False, sep='\t'))  # Write the Pandas DataFrame as a csv to the buffer
         sio.seek(0)
 
         with conn.cursor() as c:
@@ -149,7 +149,7 @@ class Ebay(object):
         try:
             api = Connection(appid=self.api_key, config_file=None, siteid="EBAY-US")
 
-            for i in range(1, 10):
+            for i in range(1, 5):
                 print("starting run: " + str(i))
                 to_datetime = (rawdate + timedelta(days=0)).isoformat() + 'Z'
                 from_datetime = (rawdate - timedelta(minutes=30)).isoformat() + 'Z'
