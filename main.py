@@ -15,7 +15,6 @@ from bs4 import BeautifulSoup
 import requests
 from multiprocessing import Pool
 
-
 load_dotenv()
 API_KEY = os.getenv('api_key')
 NOW = datetime.now()
@@ -25,8 +24,13 @@ PG_USER = 'postgres'
 PG_PASS = os.getenv('pg_pass')
 PG_HOST = '10.0.0.26'
 
+HEADERS = ({'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82 Safari/537.36',
+            'Accept-Language': 'en-US, en;q=0.5'})
+
 
 def parse_item(item):
+    # print('parsing item')
     item_list = []
     try:
         title = item.title
@@ -66,8 +70,16 @@ def parse_item(item):
 
     isbn = grab_isbn(url)
 
+    rent_price, new_buybox_price, new_listings_num, new_listings_disp_price, used_listings_num, \
+    used_listings_disp_price, best_seller_rank = grab_amazon_data(isbn)
+
     item_dict = {'title': title, 'price': price, 'isbn': isbn, 'shipping': shipping, 'url': url,
-                 'condition': condition, 'endtime': endtime}
+                 'condition': condition, 'endtime': endtime, 'amazon_rentprice': rent_price,
+                 'amazon_new_buybox_price': new_buybox_price, 'amazon_newlistings_num': new_listings_num,
+                 'amazon_new_listings_disp_price': new_listings_disp_price,
+                 'amazon_used_listings_num': used_listings_num,
+                 'amazon_used_listings_disp_price': used_listings_disp_price,
+                 'amazon_best_seller_rank': best_seller_rank}
 
     # print(item_dict)
     # item_list.append(item_dict)
@@ -82,7 +94,7 @@ def parse_page(page, item_list):
     try:
         page_items = page.reply.searchResult.item
 
-        pool = Pool(os.cpu_count()-1)  # os.cpu_count()
+        pool = Pool(4)  # os.cpu_count()
         parsed_list = pool.map(parse_item, page_items)
         # item_lists = []
         # for item in page_items:
@@ -99,30 +111,30 @@ def parse_page(page, item_list):
 
 def call_api(connection, search_term, page, start, end):
     response = connection.execute('findItemsAdvanced', {'keywords': search_term,
-                                                 'paginationInput': {
-                                                     'entriesPerPage': 100,
-                                                     'pageNumber': page,
-                                                 },
-                                                 'itemFilter': [
-                                                     {'name': 'Condition',
-                                                      'value': ['New'],
-                                                      },
-                                                     {'name': 'LocatedIn',
-                                                      'value': ['US'],
-                                                      },
-                                                     {'name': 'Currency',
-                                                      'value': ['USD'],
-                                                      },
-                                                     {'name': 'EndTimeFrom',  # on or after
-                                                      'value': start,
-                                                      },
-                                                     {'name': 'EndTimeTo',  # on or before
-                                                      'value': end,
-                                                      },
-                                                     {'name': 'ListingType',
-                                                      'value': 'FixedPrice',
-                                                      }
-                                                 ], })
+                                                        'paginationInput': {
+                                                            'entriesPerPage': 100,
+                                                            'pageNumber': page,
+                                                        },
+                                                        'itemFilter': [
+                                                            {'name': 'Condition',
+                                                             'value': ['New'],
+                                                             },
+                                                            {'name': 'LocatedIn',
+                                                             'value': ['US'],
+                                                             },
+                                                            {'name': 'Currency',
+                                                             'value': ['USD'],
+                                                             },
+                                                            {'name': 'EndTimeFrom',  # on or after
+                                                             'value': start,
+                                                             },
+                                                            {'name': 'EndTimeTo',  # on or before
+                                                             'value': end,
+                                                             },
+                                                            {'name': 'ListingType',
+                                                             'value': 'FixedPrice',
+                                                             }
+                                                        ], })
     return response
 
 
@@ -135,7 +147,7 @@ def grab_isbn(link):
     page = ''
     while page == '':
         try:
-            page = requests.get(link)
+            page = requests.get(link, headers=HEADERS)
             break
         except:
             print("Connection refused by the server..")
@@ -145,14 +157,96 @@ def grab_isbn(link):
     isbn = ''
     if page.status_code == 200:
         try:
-            soup = BeautifulSoup(page.content, 'html.parser')
-            isbn_class = soup.find(class_="ux-labels-values col-12 ux-labels-values--isbn-10")
+            isbn_soup = BeautifulSoup(page.content, 'html.parser')
+            isbn_class = isbn_soup.find(class_="ux-labels-values col-12 ux-labels-values--isbn-10")
             isbn_elements = isbn_class.find_all(class_="ux-textspans")
             isbn = isbn_elements[1].get_text()
         except:
             isbn = ''
 
+    isbn_soup.decompose()
     return isbn
+
+
+def grab_amazon_data(isbn):
+    base_link_isbn = 'https://www.amazon.com/s?k='
+
+    search_link = base_link_isbn + isbn
+
+    print(search_link)
+    time.sleep(1)
+    page = requests.get(search_link, headers=HEADERS)
+
+    amazon_item_base = 'https://www.amazon.com'
+
+    rent_price = ''
+    new_buybox_price = ''
+    new_listings_num = ''
+    new_listings_disp_price = ''
+    used_listings_num = ''
+    used_listings_disp_price = ''
+    best_seller_rank = ''
+
+    if page.status_code == 200:
+        try:
+            search_soup = BeautifulSoup(page.content, 'html.parser')
+            div = search_soup.find('div', attrs={"data-index": "2"})
+            element_link = div.find('a', href=True)['href']
+            item_link = amazon_item_base + element_link
+            search_soup.decompose()
+
+            newpage = requests.get(item_link, headers=HEADERS)
+            new_soup = BeautifulSoup(newpage.content, 'html.parser')
+        except:
+            return rent_price, new_buybox_price, new_listings_num, new_listings_disp_price, used_listings_num, \
+                   used_listings_disp_price, best_seller_rank
+
+        try:
+            rent_price = new_soup.find('span', id="rentPrice").get_text().replace('$', '').strip()
+        except:
+            pass
+
+        try:
+            new_buybox_price = new_soup.find('span', id="newBuyBoxPrice").get_text().replace('$', '').strip()
+        except:
+            pass
+
+        try:
+            new_listings_element = new_soup.find('span',
+                                                 attrs={"data-show-all-offers-display": """{"condition":"new"}"""})
+            new_listings_spans = new_listings_element.find_all('span')
+            new_listings_num = new_listings_spans[0].get_text().split(' ')[0]
+            new_listings_disp_price = new_listings_element.find(class_="a-color-price").get_text().replace('$',
+                                                                                                           '').strip()
+        except:
+            pass
+
+        try:
+            used_listings_element = new_soup.find('span',
+                                                  attrs={"data-show-all-offers-display": """{"condition":"used"}"""})
+            used_listings_spans = used_listings_element.find_all('span')
+            used_listings_num = used_listings_spans[0].get_text().split(' ')[0]
+            used_listings_disp_price = used_listings_element.find(class_="a-color-price").get_text().replace('$',
+                                                                                                             '').strip()
+        except:
+            pass
+
+        try:
+            best_seller_ele = new_soup(text=" Best Sellers Rank: ")
+            best_seller_rank = best_seller_ele[0].next_element.strip().split(' ')[0].replace(',', '').replace('#', '')
+        except:
+            pass
+    else:
+        print('amazon page not reached')
+    # print(rent_price, new_buybox_price, new_listings_num, new_listings_disp_price, used_listings_num,
+    #       used_listings_disp_price, best_seller_rank)
+    try:
+        new_soup.decompose()
+    except:
+        pass
+
+    return rent_price, new_buybox_price, new_listings_num, new_listings_disp_price, used_listings_num, \
+           used_listings_disp_price, best_seller_rank
 
 
 def bulk_load_items(db_conn, item_list):
@@ -185,7 +279,7 @@ class Ebay(object):
         self.search = search
 
     def fetch(self):
-        rawdate = NOW_GMT + timedelta(days=20) # + timedelta(hours=24)
+        rawdate = NOW_GMT + timedelta(days=20)  # + timedelta(hours=24)
         # rawdate = datetime(2021,12,14,8)
         # consdate = datetime(2021, 12, 14, 8)
         item_list = []
@@ -212,7 +306,7 @@ class Ebay(object):
 
                     if pages >= 2:
                         # print('multipage')
-                        for page in range(2, pages+1):
+                        for page in range(2, pages + 1):
                             # call new page
                             # print(f"calling page: {page}")
                             new_page = call_api(api, self.search, str(page), from_datetime, to_datetime)
