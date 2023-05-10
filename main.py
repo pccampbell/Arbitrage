@@ -25,6 +25,8 @@ NOW_GMT = datetime.now() + timedelta(hours=6)
 PG_USER = 'postgres'
 PG_PASS = os.getenv('pg_pass')
 PG_HOST = '10.0.0.26'
+BD_PASS = os.getenv('bd_pass')
+BD_USERNAME = os.getenv('bd_username')
 
 HEADERS = ({'User-Agent':
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82 Safari/537.36',
@@ -226,8 +228,8 @@ def grab_isbn(link):
     while page == '':
         try:
             page = requests.get(link, headers=HEADERS)
-            proxies = {'http': 'http://brd-customer-hl_49002465-zone-data_center:35192ao3q4f0@zproxy.lum-superproxy.io:22225',
-                       'https': 'http://brd-customer-hl_49002465-zone-data_center:35192ao3q4f0@zproxy.lum-superproxy.io:22225'}
+            proxies = {'http': f'http://{BD_USERNAME}:{BD_PASS}3q4f0@zproxy.lum-superproxy.io:22225',
+                       'https': f'http://{BD_USERNAME}:{BD_PASS}@zproxy.lum-superproxy.io:22225'}
             # page = requests.get(link, headers=HEADERS, proxies=proxies, verify=False) #r"C:\Users\PeterCampbell\environments\arbitrage\Arbitrage\bd_cert.crt")
             page = wait_for_response(link)
             break
