@@ -107,7 +107,7 @@ def parse_item(item):
 
     isbn_10, isbn_13 = grab_isbn(url)
 
-    isbn = coalesce(isbn_10,isbn_13)
+    isbn = coalesce(isbn_13, isbn_10)
     if isbn is None:
         return None
 
@@ -225,6 +225,7 @@ def grab_isbn(link):
     page = ''
     while page == '':
         try:
+            print(link)
             page = requests.get(link, headers=HEADERS)
             proxies = {'http': 'http://brd-customer-hl_49002465-zone-data_center:35192ao3q4f0@zproxy.lum-superproxy.io:22225',
                        'https': 'http://brd-customer-hl_49002465-zone-data_center:35192ao3q4f0@zproxy.lum-superproxy.io:22225'}
@@ -245,7 +246,7 @@ def grab_isbn(link):
         try:
             #Look for ISBN-10 in lower details section
             isbn_10_class = isbn_soup.select('div[class*="isbn-10"]')
-            isbn_10 = isbn_10_class[0].find_all(class_="ux-textspans")[1].get_text()
+            isbn_10 = isbn_10_class[0].find_all(class_="ux-textspans")[1].get_text().strip()
             # print('found lower')
         except:
             isbn_10 = ''
@@ -253,7 +254,7 @@ def grab_isbn(link):
         try:
             # Look for ISBN-13 in lower details section
             isbn_13_class = isbn_soup.select('div[class*="isbn-13"]')
-            isbn_13 = isbn_13_class[0].find_all(class_="ux-textspans")[1].get_text()
+            isbn_13 = isbn_13_class[0].find_all(class_="ux-textspans")[1].get_text().strip()
             # print('found lower')
         except:
             isbn_13 = ''
@@ -274,7 +275,21 @@ def grab_isbn(link):
                     if isbn != '':
                         break
             except:
-                isbn_10 = ''
+                try:
+                    item_details = isbn_soup.find_all(class_="ux-layout-section__item")
+                    for ele in item_details:
+                        items = ele.find_all(class_="ux-textspans")
+                        for i in range(len(items)):
+                            # Looks for element text of ISBN-10 knowing the next element will be value (no keywords could be used like above)
+                            if items[i].text == 'ISBN-10' or items[i].text == 'ISBN10' or items[i].text == 'ISBN':
+                                if len(items[i + 1].text) == 10:
+                                    isbn_10 = items[i + 1].text
+                                    # print('found middle')
+                                    break
+                        if isbn != '':
+                            break
+                except:
+                    isbn_10 == ''
 
         if isbn_13 == '':
             try:
@@ -285,13 +300,27 @@ def grab_isbn(link):
                         #Looks for element text of ISBN-13 knowing the next element will be value (no keywords could be used like above)
                         if items[i].text == 'ISBN-13' or items[i].text == 'ISBN13' or items[i].text == 'ISBN':
                             if len(items[i + 1].text) == 13:
-                                isbn_10 = items[i + 1].text
+                                isbn_13 = items[i + 1].text
                                 # print('found middle')
                                 break
                     if isbn != '':
                         break
             except:
-                isbn_10 = ''
+                try:
+                    item_details = isbn_soup.find_all(class_="ux-layout-section__item")
+                    for ele in item_details:
+                        items = ele.find_all(class_="ux-textspans")
+                        for i in range(len(items)):
+                            # Looks for element text of ISBN-10 knowing the next element will be value (no keywords could be used like above)
+                            if items[i].text == 'ISBN-13' or items[i].text == 'ISBN13' or items[i].text == 'ISBN':
+                                if len(items[i + 1].text) == 13:
+                                    isbn_13 = items[i + 1].text
+                                    # print('found middle')
+                                    break
+                        if isbn != '':
+                            break
+                except:
+                    isbn_13 == ''
         isbn_soup.decompose()
     else:
         print(page.status_code)
@@ -310,10 +339,10 @@ def wait_for_response(link):
         print(f"Attempt {str(attempt)} failed")
         time.sleep(60*attempt)
         headers = random.choice(HEADERS_LIST)
-        page = requests.get(search_link, headers=headers)
+        page = requests.get(link, headers=headers)
         attempt +=1
 
-    print(page.status_code)
+    # print(page.status_code)
     return page
 
 
@@ -464,7 +493,7 @@ class Ebay(object):
         self.search = search
 
     def fetch(self):
-        rawdate = NOW_GMT + timedelta(days=0)  # + timedelta(hours=24)
+        rawdate = NOW_GMT + timedelta(days=6)  # + timedelta(hours=24)
         # rawdate = datetime(2021,12,14,8)
         # consdate = datetime(2021, 12, 14, 8)
         item_list = []
