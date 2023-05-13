@@ -43,6 +43,15 @@ HEADERS_LIST = [
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1"
     },
+    {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        # "Referer": "https://www.google.com/",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
+    },
     # Firefox 77 Windows
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0",
@@ -228,11 +237,11 @@ def grab_isbn(link):
     while page == '':
         try:
             print(link)
-            page = requests.get(link, headers=HEADERS)
+            # page = requests.get(link, headers=HEADERS)
             proxies = {'http': f'http://{BD_USERNAME}:{BD_PASS}3q4f0@zproxy.lum-superproxy.io:22225',
                        'https': f'http://{BD_USERNAME}:{BD_PASS}@zproxy.lum-superproxy.io:22225'}
             # page = requests.get(link, headers=HEADERS, proxies=proxies, verify=False) #r"C:\Users\PeterCampbell\environments\arbitrage\Arbitrage\bd_cert.crt")
-            page = wait_for_response(link)
+            page = get_response(link)
             break
         except Exception as e:
             print("Connection refused by the server..")
@@ -333,15 +342,20 @@ def grab_isbn(link):
     return isbn_10, isbn_13
 
 
-def wait_for_response(link):
+def get_response(link, proxies=None):
     headers = random.choice(HEADERS_LIST)
-    page = requests.get(link, headers=headers)
+    page = requests.get(link, headers=headers, proxies=proxies, verify=False)
     attempt = 1
     while page.status_code != 200:
         print(f"Attempt {str(attempt)} failed")
-        time.sleep(60*attempt)
+        if attempt > 5:
+            time.sleep(60 * 30)
+        elif attempt >10:
+            time.sleep(60 * 60)
+        else:
+            time.sleep(60)
         headers = random.choice(HEADERS_LIST)
-        page = requests.get(link, headers=headers)
+        page = requests.get(link, headers=headers, proxies=proxies, verify=False)
         attempt +=1
 
     # print(page.status_code)
@@ -371,10 +385,9 @@ def grab_amazon_data(isbn):
     search_link = base_link_isbn + isbn
     amazon_item_base = 'https://www.amazon.com'
 
-    headers = random.choice(HEADERS_LIST)
     # print(search_link)
     # time.sleep(1)
-    page = wait_for_response(search_link)
+    page = get_response(search_link)
 
     amazon_item_base = 'https://www.amazon.com'
 
@@ -390,7 +403,7 @@ def grab_amazon_data(isbn):
 
         print(item_link)
         headers = random.choice(HEADERS_LIST)
-        newpage = wait_for_response(item_link)
+        newpage = get_response(item_link)
         new_soup = BeautifulSoup(newpage.text, 'lxml')
     except:
         return item_link, buybox_price, book_type, paperback_disp_price, paperback_new_listings_num,\
@@ -408,9 +421,16 @@ def grab_amazon_data(isbn):
         if buybox_price == '':
             # print("buy box not found")
             new_soup.decompose()
-            newpage = wait_for_response(item_link)
+            newpage = get_response(item_link)
             new_soup = BeautifulSoup(newpage.text, 'lxml')
             buybox_price = error_handler(lambda: new_soup.find(id="price").get_text().replace('$', '').strip())
+
+    try:
+        print("grabbing best sellers rank")
+        best_seller_ele = new_soup(text=" Best Sellers Rank: ")
+        best_seller_rank = best_seller_ele[0].next_element.strip().split(' ')[0].replace(',', '').replace('#', '')
+    except:
+        pass
 
     try:
         # Looks through the list of mini buy boxes to grab paperback vs hardcover
@@ -445,11 +465,6 @@ def grab_amazon_data(isbn):
         # except:
         #     pass
 
-        try:
-            best_seller_ele = new_soup(text=" Best Sellers Rank: ")
-            best_seller_rank = best_seller_ele[0].next_element.strip().split(' ')[0].replace(',', '').replace('#', '')
-        except:
-            pass
 
         # print(item_link)
     # print(rent_price, new_buybox_price, new_listings_num, new_listings_disp_price, used_listings_num,
@@ -495,7 +510,7 @@ class Ebay(object):
         self.search = search
 
     def fetch(self):
-        rawdate = NOW_GMT + timedelta(days=6)  # + timedelta(hours=24)
+        rawdate = NOW_GMT + timedelta(days=7)  # + timedelta(hours=24)
         # rawdate = datetime(2021,12,14,8)
         # consdate = datetime(2021, 12, 14, 8)
         item_list = []
