@@ -1,5 +1,3 @@
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 import time
 
 from dotenv import load_dotenv
@@ -25,8 +23,10 @@ NOW_GMT = datetime.now() + timedelta(hours=6)
 PG_USER = 'postgres'
 PG_PASS = os.getenv('pg_pass')
 PG_HOST = '10.0.0.26'
-BD_PASS = os.getenv('bd_pass')
-BD_USERNAME = os.getenv('bd_username')
+BD_DATA_PASS = os.getenv('bd_data_pass')
+BD_DATA_USERNAME = os.getenv('bd_data_username')
+BD_RESIDENTIAL_PASS = os.getenv('bd_residential_pass')
+BD_RESIDENTIAL_USERNAME = os.getenv('bd_residential_username')
 
 HEADERS = ({'User-Agent':
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82 Safari/537.36',
@@ -126,9 +126,6 @@ def parse_item(item):
     paperback_used_listings_num, paperback_used_listings_from_price, hardcover_disp_price, hardcover_new_listings_num,\
     hardcover_new_listings_from_price, hardcover_used_listings_num, hardcover_used_listings_from_price,\
     best_seller_rank = grab_amazon_data(isbn_10)
-
-    # item_dict = {'title': title, 'price': price, 'isbn': isbn_10, 'shipping': shipping, 'url': url,
-    #              'condition': condition, 'endtime': endtime}
 
     item_dict = {'title': title, 'price': price, 'isbn': isbn_10, 'shipping': shipping, 'url': url,
                  'condition': condition, 'endtime': endtime,
@@ -237,14 +234,10 @@ def grab_isbn(link):
     while page == '':
         try:
             print(link)
-            # page = requests.get(link, headers=HEADERS)
-            proxies = {'http': f'http://{BD_USERNAME}:{BD_PASS}3q4f0@zproxy.lum-superproxy.io:22225',
-                       'https': f'http://{BD_USERNAME}:{BD_PASS}@zproxy.lum-superproxy.io:22225'}
             # page = requests.get(link, headers=HEADERS, proxies=proxies, verify=False) #r"C:\Users\PeterCampbell\environments\arbitrage\Arbitrage\bd_cert.crt")
-            page = get_response(link)
+            page = get_response(link, 'data')
             break
         except Exception as e:
-            print("Connection refused by the server..")
             print(str(e))
             # time.sleep(5)
             continue
@@ -252,13 +245,11 @@ def grab_isbn(link):
     isbn_13 = ''
     isbn_10_class = None
     if page.status_code == 200:
-        # print('trying')
         isbn_soup = BeautifulSoup(page.text, 'lxml')
         try:
             #Look for ISBN-10 in lower details section
             isbn_10_class = isbn_soup.select('div[class*="isbn-10"]')
             isbn_10 = isbn_10_class[0].find_all(class_="ux-textspans")[1].get_text().strip()
-            # print('found lower')
         except:
             isbn_10 = ''
 
@@ -266,7 +257,6 @@ def grab_isbn(link):
             # Look for ISBN-13 in lower details section
             isbn_13_class = isbn_soup.select('div[class*="isbn-13"]')
             isbn_13 = isbn_13_class[0].find_all(class_="ux-textspans")[1].get_text().strip()
-            # print('found lower')
         except:
             isbn_13 = ''
 
@@ -281,7 +271,6 @@ def grab_isbn(link):
                         if items[i].text == 'ISBN-10' or items[i].text == 'ISBN10' or items[i].text == 'ISBN':
                             if len(items[i + 1].text) == 10:
                                 isbn_10 = items[i + 1].text
-                                # print('found middle')
                                 break
                     if isbn != '':
                         break
@@ -295,7 +284,6 @@ def grab_isbn(link):
                             if items[i].text == 'ISBN-10' or items[i].text == 'ISBN10' or items[i].text == 'ISBN':
                                 if len(items[i + 1].text) == 10:
                                     isbn_10 = items[i + 1].text
-                                    # print('found middle')
                                     break
                         if isbn != '':
                             break
@@ -326,7 +314,6 @@ def grab_isbn(link):
                             if items[i].text == 'ISBN-13' or items[i].text == 'ISBN13' or items[i].text == 'ISBN':
                                 if len(items[i + 1].text) == 13:
                                     isbn_13 = items[i + 1].text
-                                    # print('found middle')
                                     break
                         if isbn != '':
                             break
@@ -342,23 +329,41 @@ def grab_isbn(link):
     return isbn_10, isbn_13
 
 
-def get_response(link, proxies=None):
+def get_response(link, proxies):
     headers = random.choice(HEADERS_LIST)
-    page = requests.get(link, headers=headers, proxies=proxies, verify=False)
-    attempt = 1
-    while page.status_code != 200:
-        print(f"Attempt {str(attempt)} failed")
-        if attempt > 5:
-            time.sleep(60 * 30)
-        elif attempt >10:
-            time.sleep(60 * 60)
-        else:
-            time.sleep(60)
-        headers = random.choice(HEADERS_LIST)
-        page = requests.get(link, headers=headers, proxies=proxies, verify=False)
-        attempt +=1
+    # headers = HEADERS
+    if proxies == 'data':
+        # req_proxies = {'http': f'http://{BD_DATA_USERNAME}:{BD_DATA_PASS}@zproxy.lum-superproxy.io:22225',
+        #            'https': f'http://{BD_DATA_USERNAME}:{BD_DATA_PASS}@zproxy.lum-superproxy.io:22225'}
+        req_proxies = {'http': f'http://{BD_DATA_USERNAME}:{BD_DATA_PASS}@zproxy.lum-superproxy.io:22225',
+                       'https': f'http://{BD_DATA_USERNAME}:{BD_DATA_PASS}@zproxy.lum-superproxy.io:22225'}
+    elif proxies == 'residential':
+        req_proxies = {'http': f'http://{BD_RESIDENTIAL_USERNAME}:{BD_RESIDENTIAL_PASS}@zproxy.lum-superproxy.io:22225',
+                   'https': f'http://{BD_RESIDENTIAL_USERNAME}:{BD_RESIDENTIAL_PASS}@zproxy.lum-superproxy.io:22225'}
 
-    # print(page.status_code)
+    page = requests.get(link, headers=headers, proxies=req_proxies, verify=False)
+    status = page.status_code
+    i=1
+    while status != 200:
+        page = requests.get(link, headers=headers, proxies=req_proxies, verify=False)
+        status = page.status_code
+        print(i)
+        i+=1
+    # page = requests.get(link, headers=headers, proxies=proxies, verify=False)
+    # attempt = 1
+    # while page.status_code != 200:
+    #     print(f"Attempt {str(attempt)} failed")
+    #     if attempt > 5:
+    #         time.sleep(60 * 30)
+    #     elif attempt >10:
+    #         time.sleep(60 * 60)
+    #     else:
+    #         time.sleep(60)
+    #     headers = random.choice(HEADERS_LIST)
+    #     page = requests.get(link, headers=headers, proxies=proxies, verify=False)
+    #     attempt +=1
+
+    print(page.status_code)
     return page
 
 
@@ -387,25 +392,27 @@ def grab_amazon_data(isbn):
 
     # print(search_link)
     # time.sleep(1)
-    page = get_response(search_link)
-
-    amazon_item_base = 'https://www.amazon.com'
 
     try:
+        page = get_response(search_link, 'data')
         search_soup = BeautifulSoup(page.text, 'lxml')
         listing = error_handler(lambda: search_soup.find(class_='s-price-instructions-style'))
         book_type = error_handler(lambda: listing.find_all("a")[0].get_text())
         # div = search_soup.find('div', attrs={"data-index": "2"})   #this randomly wasn't working anymore maybe consider trying both
+        print('1')
         div = search_soup.find('div', attrs={"data-component-type": "s-search-result"})
+        print('2')
         element_link = div.find('a', href=True)['href']
+        print('found link')
         item_link = amazon_item_base + element_link
         search_soup.decompose()
 
         print(item_link)
-        headers = random.choice(HEADERS_LIST)
-        newpage = get_response(item_link)
+        newpage = get_response(item_link, 'data')
         new_soup = BeautifulSoup(newpage.text, 'lxml')
-    except:
+    except Exception as e:
+        print("amazon fail")
+        print(str(e))
         return item_link, buybox_price, book_type, paperback_disp_price, paperback_new_listings_num,\
                paperback_new_listings_from_price,paperback_used_listings_num, paperback_used_listings_from_price,\
                hardcover_disp_price, hardcover_new_listings_num, hardcover_new_listings_from_price,\
@@ -421,7 +428,8 @@ def grab_amazon_data(isbn):
         if buybox_price == '':
             # print("buy box not found")
             new_soup.decompose()
-            newpage = get_response(item_link)
+            print("repulling amazon")
+            newpage = get_response(item_link, 'residential')
             new_soup = BeautifulSoup(newpage.text, 'lxml')
             buybox_price = error_handler(lambda: new_soup.find(id="price").get_text().replace('$', '').strip())
 
@@ -539,13 +547,6 @@ class Ebay(object):
                     item_list = parse_page(response, item_list)
                     print('item list length: ' + str(len(item_list)))
 
-                    print("connecting to DB")
-                    conn = connect_db(PG_HOST, 'arbitrage', PG_USER, PG_PASS)
-                    print("Connected - loading data to db")
-                    bulk_load_items(conn, item_list, "textbook_search_test")
-                    item_list = []
-                    print("Uploaded list to postgres")
-
                     if pages >= 2:
                         # print('multipage')
                         for page in range(2, pages + 1):
@@ -555,18 +556,20 @@ class Ebay(object):
                             # print('succ pulled page: ' + str(new_page.reply.paginationOutput.pageNumber))
                             item_list = parse_page(new_page, item_list)
 
-                            print("connecting to DB")
-                            conn = connect_db(PG_HOST, 'arbitrage', PG_USER, PG_PASS)
-                            print("Connected - loading data to db")
-                            bulk_load_items(conn, item_list, "textbook_search_test")
-                            item_list = []
-                            print("Uploaded list to postgres")
 
                 except Exception as e:
                     print(str(e))
                     print('No data \n')
                     pass
                 i += 1
+
+                print("connecting to DB")
+                conn = connect_db(PG_HOST, 'arbitrage', PG_USER, PG_PASS)
+                len_upload = str(len(item_list))
+                print(f"Connected - loading {len_upload} rows of data into the db")
+                bulk_load_items(conn, item_list, "nonfiction_search_test")
+                item_list = []
+                print("Uploaded list to postgres")
 
                 rawdate = rawdate + timedelta(minutes=30)
                 print('Current List count ' + str(len(item_list)) + '\n\n')
@@ -584,6 +587,7 @@ if __name__ == '__main__':
     start_time = datetime.now()
     # conn = connect_db(PG_HOST, 'arbitrage', PG_USER, PG_PASS)
     search = sys.argv[1]
+    print(search)
     e = Ebay(API_KEY, search)
     item_list = e.fetch()
 
